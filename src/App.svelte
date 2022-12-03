@@ -1,27 +1,73 @@
 <script>
-	// import Cards from './Cards.svelte';
+	import { triggerRequestPokemon } from "./request";
 	import { onMount } from 'svelte';
 	import axios from 'axios';
 
-	let pokemonFound = 0;
-	const getPokemonCount = async() => {
-		axios.get('https://pokeapi.co/api/v2/pokemon?limit=151')
-			.then(response => {
-				const data = response.data.results;
-				const names = data.map(pokemon => pokemon.name.charAt(0).toUpperCase() + pokemon.name.slice(1));
+	let pokemonCount = 0; // Number of pokemon in the API
 
-				console.log("names", names);
-				pokemonFound = names;
+	let offset = -20; // Offset starts at -20 since the data is 20 pokemon behind
+	let loadedPokemons = [];
+	let isFetching = false;
+
+	// Executed when the page loads
+	onMount(async() => {
+		console.log("The page is mounted!");
+		// Get the total number of pokemon then get the first 20
+		await getPokemonCount().then(() => {
+			console.log("pokemonCount", pokemonCount);
+		});
+
+		// Get the first 20 pokemon
+		loadMorePokemons();
+	});
+
+	// Get the total number of pokemon from the API
+	const getPokemonCount = async() => {
+		await axios.get('https://pokeapi.co/api/v2/pokemon')
+			.then(response => {
+				return pokemonCount = response.data.count;
 			})
 			.catch(error => {
 				console.log(error);
 			});
 	}
 
-	onMount(() => {
-		console.log("onMount");
-		getPokemonCount();
-	});
+	// Fetch the next 20 pokemon
+	const loadMorePokemons = async() => {
+		try {
+			isFetching = true;
+			const response = await axios.get('https://pokeapi.co/api/v2/pokemon', {
+				params: {
+					offset: offset += 20,
+				}
+			}).then (response => {
+				// Add a uppercase first letter to the pokemon name
+				response.data.results.forEach(pokemon => {
+					pokemon.name = pokemon.name.charAt(0).toUpperCase() + pokemon.name.slice(1);
+				});
+				loadedPokemons = [...loadedPokemons, ...response.data.results];
+				isFetching = false;
+			});
+
+			console.log("loadedPokemons", loadedPokemons);
+		} catch (error) {
+			console.log(error);
+		}
+	}
+
+	const loadMore = () => {
+		setTimeout(() => {
+			loadMorePokemons();
+		}, 100);
+	}
+
+	// Reactive declarations
+	let elementRef = null;
+	$: {
+		if (elementRef && loadedPokemons.length < pokemonCount) {
+			triggerRequestPokemon({ fetch: loadMore, element: elementRef });
+		}
+	}
 
 </script>
 
@@ -34,12 +80,26 @@
 		</p>
 		<input type="search" name="searchbar" placeholder="Looking for a specific pokemon?" />
 		<div class="buttons flex">
-			<button class="bold">Show filters</button>
+			<button class="bold" on:click={() => console.log("Show filters")}>Show filters</button>
 			<button class="bold">Random</button>
 		</div>
 	</section>
-	<section class="results">
 
+	<section class="results">
+		{#each loadedPokemons as pokemon, i}
+			<div class="card">
+				<p>{i+1} {pokemon.name}</p>
+				{#if i < 905}
+					<img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/{i+1}.png" alt="{pokemon.name}">
+				{:else}
+					<img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/0.png" alt="{pokemon.name}">
+				{/if}
+			</div>
+		{/each}
+
+		{#if isFetching === false && loadedPokemons.length < pokemonCount}
+			<li bind:this={elementRef}>isFetching...</li>
+		{/if}
 	</section>
 </main>
 
@@ -90,10 +150,11 @@ input[name="searchbar"] {
 }
 
 section.results {
-	display: block;
-	height: 100vh;
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+	place-items: center;
+	grid-gap: 1rem 0.5rem;
 	width: 100%;
 	background: #7fad71;
 }
-
 </style>
